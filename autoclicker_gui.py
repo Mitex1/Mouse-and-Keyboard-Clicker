@@ -13,7 +13,7 @@ class AutoActionApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Auto-Clicker & -Presser")
-        self.root.geometry("380x280")
+        self.root.geometry("380x420")
         self.root.resizable(False, False)
 
         self.running = False
@@ -31,32 +31,39 @@ class AutoActionApp:
 
         # --- Tastendruck-spezifische Eingaben ---
         self.key_action_enabled = tk.BooleanVar(value=True)
-        self.key_checkbox = ttk.Checkbutton(input_frame, text="Tastendruck aktiv", variable=self.key_action_enabled, command=self.toggle_ui_elements)
+        self.key_checkbox = ttk.Checkbutton(input_frame, text="Tastedrücke aktiv", variable=self.key_action_enabled, command=self.toggle_ui_elements)
         self.key_checkbox.grid(row=0, column=0, columnspan=2, padx=5, pady=(5,0), sticky=tk.W)
 
-        ttk.Label(input_frame, text="   Taste:").grid(row=1, column=0, padx=5, pady=2, sticky=tk.W)
-        self.key_entry = ttk.Entry(input_frame, width=25)
-        self.key_entry.grid(row=1, column=1, padx=5, pady=2)
-        self.key_entry.insert(0, "a")
-
+        # Tasten-Eingabefelder (bis zu 4 Tasten)
+        self.key_entries = []
+        for i in range(4):
+            label_text = f"   Taste {i+1}:"
+            ttk.Label(input_frame, text=label_text).grid(row=1+i, column=0, padx=5, pady=2, sticky=tk.W)
+            key_entry = ttk.Entry(input_frame, width=25)
+            key_entry.grid(row=1+i, column=1, padx=5, pady=2)
+            self.key_entries.append(key_entry)
+        
+        # Standard-Tasten setzen
+        self.key_entries[0].insert(0, "a")
+        
         # Separator
-        ttk.Separator(input_frame, orient='horizontal').grid(row=2, columnspan=2, sticky='ew', pady=10)
+        ttk.Separator(input_frame, orient='horizontal').grid(row=5, columnspan=2, sticky='ew', pady=10)
 
         # --- Mausklick-spezifische Eingaben ---
         self.mouse_action_enabled = tk.BooleanVar(value=False)
         self.mouse_checkbox = ttk.Checkbutton(input_frame, text="Mausklick aktiv", variable=self.mouse_action_enabled, command=self.toggle_ui_elements)
-        self.mouse_checkbox.grid(row=3, column=0, columnspan=2, padx=5, pady=(5,0), sticky=tk.W)
+        self.mouse_checkbox.grid(row=6, column=0, columnspan=2, padx=5, pady=(5,0), sticky=tk.W)
 
-        ttk.Label(input_frame, text="   Maustaste:").grid(row=4, column=0, padx=5, pady=2, sticky=tk.W)
+        ttk.Label(input_frame, text="   Maustaste:").grid(row=7, column=0, padx=5, pady=2, sticky=tk.W)
         self.mouse_button_var = tk.StringVar(value="Links")
         self.mouse_button_combo = ttk.Combobox(input_frame, textvariable=self.mouse_button_var, width=22, state="readonly")
         self.mouse_button_combo['values'] = ('Links', 'Rechts', 'Mittel')
-        self.mouse_button_combo.grid(row=4, column=1, padx=5, pady=2)
+        self.mouse_button_combo.grid(row=7, column=1, padx=5, pady=2)
         
         # --- Gemeinsame Eingaben ---
-        ttk.Label(input_frame, text="Intervall (ms):").grid(row=5, column=0, padx=5, pady=(15, 5), sticky=tk.W)
+        ttk.Label(input_frame, text="Intervall (ms):").grid(row=8, column=0, padx=5, pady=(15, 5), sticky=tk.W)
         self.interval_entry = ttk.Entry(input_frame, width=25)
-        self.interval_entry.grid(row=5, column=1, padx=5, pady=(15, 5))
+        self.interval_entry.grid(row=8, column=1, padx=5, pady=(15, 5))
         self.interval_entry.insert(0, "500")
 
         # --- Steuerung ---
@@ -76,7 +83,8 @@ class AutoActionApp:
 
     def toggle_ui_elements(self):
         """Aktiviert/Deaktiviert Eingabefelder basierend auf der Checkbox-Auswahl."""
-        self.key_entry.config(state=tk.NORMAL if self.key_action_enabled.get() else tk.DISABLED)
+        for key_entry in self.key_entries:
+            key_entry.config(state=tk.NORMAL if self.key_action_enabled.get() else tk.DISABLED)
         self.mouse_button_combo.config(state='readonly' if self.mouse_action_enabled.get() else tk.DISABLED)
 
     def action_loop(self):
@@ -91,12 +99,18 @@ class AutoActionApp:
             key_enabled = self.key_action_enabled.get()
             mouse_enabled = self.mouse_action_enabled.get()
             
-            # Spezifische Werte nur holen, wenn die Aktion auch aktiv ist
-            key_to_press = self.key_entry.get() if key_enabled else None
-            if key_enabled and not key_to_press:
-                messagebox.showerror("Fehler", "Bitte geben Sie eine Taste an.")
-                self.stop_actions()
-                return
+            # Tasten sammeln (nur nicht-leere Einträge)
+            keys_to_press = []
+            if key_enabled:
+                for key_entry in self.key_entries:
+                    key_text = key_entry.get().strip()
+                    if key_text:
+                        keys_to_press.append(key_text)
+                
+                if not keys_to_press:
+                    messagebox.showerror("Fehler", "Bitte geben Sie mindestens eine Taste an.")
+                    self.stop_actions()
+                    return
 
             button_map = {'Links': Button.left, 'Rechts': Button.right, 'Mittel': Button.middle}
             button_to_click = button_map.get(self.mouse_button_var.get()) if mouse_enabled else None
@@ -104,8 +118,15 @@ class AutoActionApp:
             # Die eigentliche Aktionsschleife
             while self.running:
                 if key_enabled:
-                    keyboard.press(key_to_press)
-                    keyboard.release(key_to_press)
+                    # Alle Tasten nacheinander drücken und freigeben
+                    for key in keys_to_press:
+                        keyboard.press(key)
+                    
+                    # Kurze Verzögerung zwischen Drücken und Freigeben
+                    time.sleep(0.05)
+                    
+                    for key in keys_to_press:
+                        keyboard.release(key)
                 
                 if mouse_enabled:
                     mouse.click(button_to_click, 1)
@@ -136,7 +157,8 @@ class AutoActionApp:
         # Alle Eingabeelemente deaktivieren
         self.key_checkbox.config(state=tk.DISABLED)
         self.mouse_checkbox.config(state=tk.DISABLED)
-        self.key_entry.config(state=tk.DISABLED)
+        for key_entry in self.key_entries:
+            key_entry.config(state=tk.DISABLED)
         self.mouse_button_combo.config(state=tk.DISABLED)
         self.interval_entry.config(state=tk.DISABLED)
 
